@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import firebase from '../../firebase';
+import md5 from 'md5';
 import { Grid, Form, Segment, Button, Header, Message, Icon} from 'semantic-ui-react';
 import { Link } from 'react-router-dom';
 
@@ -10,6 +11,8 @@ class Register extends Component {
     password: '',
     passwordConfirmation: '',
     errors: [],
+    loading: false,
+    usersRef: firebase.database().ref('users'),
   };
 
   isFormValid = () => {
@@ -53,19 +56,46 @@ class Register extends Component {
   };
 
   handleSumbit = event => {
+    event.preventDefault();
+    const { email, password, errors, username } = this.state;
     if (this.isFormValid()) {
-      event.preventDefault();
-      const { email, password } = this.state;
+      this.setState({ errors: [], loading: true });
       firebase
         .auth()
         .createUserWithEmailAndPassword(email, password)
         .then(createdUser => {
           console.log(createdUser);
+          createdUser.user.updateProfile({
+            displayName: username,
+            photoURL: `http://gravatar.com/avatar/${md5(createdUser.user.email)}?d=identicon`
+          })
+          .then(() => {
+            console.log('insave',createdUser)
+            this.saveUser(createdUser).then(() => {
+              console.log("user is saved");
+            });
+          })
+          .catch(err => {
+            console.error(err);
+            this.setState({ errors: errors.concat(err), loading: false })
+          })
         })
         .catch(err => {
-          console.log(err)
+          console.log(err);
+          this.setState({ errors: errors.concat(err) ,loading: false })
         });
     }
+  };
+
+  handleInputError = ( errors, inputValue ) => {
+    return errors.some(error => error.message.toLowerCase().includes(inputValue)) ? "error" : "";
+  };
+
+  saveUser = createdUser => {
+    return this.state.usersRef.child(createdUser.user.uid).set({
+      name: createdUser.user.displayName,
+      avatar: createdUser.user.photoURL,
+    });
   };
 
   render() {
@@ -75,6 +105,7 @@ class Register extends Component {
       password,
       passwordConfirmation,
       errors,
+      loading,
     } = this.state;
     return (
       <Grid textAlign="center" verticalAlign="middle" className="app">
@@ -103,6 +134,7 @@ class Register extends Component {
                 placeholder="Email address"
                 onChange={this.handleChange}
                 value={email}
+                className={this.handleInputError(errors, 'email')}
                 type="email"
               />
               <Form.Input 
@@ -113,6 +145,7 @@ class Register extends Component {
                 placeholder="Passwrod"
                 onChange={this.handleChange}
                 value={password}
+                className={this.handleInputError(errors, 'password')}
                 type="password"
               />
               <Form.Input 
@@ -123,9 +156,18 @@ class Register extends Component {
                 placeholder="password Confirmation"
                 onChange={this.handleChange}
                 value={passwordConfirmation}
+                className={this.handleInputError(errors, 'password')}
                 type="password"
               />
-              <Button color="orange" fluid size="large">Submit</Button>
+              <Button
+                disabled={loading}
+                className={loading ? 'loading': ''}
+                color="orange"
+                fluid
+                size="large"
+              >
+                Submit
+              </Button>
             </Segment>
           </Form>
           {errors.length > 0 && (
